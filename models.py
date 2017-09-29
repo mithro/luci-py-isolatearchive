@@ -5,9 +5,8 @@ from google.appengine.ext import ndb
 class Task(ndb.Model):
   task_id = ndb.TextProperty()
   task_name = ndb.TextProperty()
-  url = ndb.TextProperty()
-  hash = ndb.BlobProperty()
-  
+  output_hash = ndb.BlobProperty()
+
   @classmethod
   def TasksQuery(cls, parent_key):
     return cls.query(ancestor=parent_key)

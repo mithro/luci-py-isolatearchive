@@ -12,11 +12,13 @@ from google.appengine.api import taskqueue
 from google.appengine.ext import ndb
 from google.appengine.ext import deferred
 
+import apis
+
 
 class HelloWorld(webapp2.RequestHandler):
   def get(self, **kwargs):
     if self.request.get('task_name', None) is None:
-      self.response.out.write('''Wat
+      self.response.out.write('''Swarming output.json:
       <form action='/'  method='POST'>
       <textarea name='json'></textarea>
       <input type='submit'>
@@ -48,10 +50,9 @@ class HelloWorld(webapp2.RequestHandler):
           # The id for this key is auto generated (thus why we specify 0).
           task_key = ndb.Key(models.Task, 0, parent=archive_key)
           task = models.Task(
-              key=task_key, 
+              key=task_key,
               task_id=json_task['task_id'],
-              task_name=json_task_name,
-              url='https://chromium-swarm.appspot.com/api/swarming/v1/task/%s/result' % json_task['task_id'])
+              task_name=json_task_name)
           task.put()
         # Only poll the archive if this commit succeeds.
         deferred.defer(
@@ -74,21 +75,21 @@ def DoUploadToGCS(archive_entity):
     assert False, 'Oops, an error occurred'
   return 'http://localhost.localdomain/%s' % archive_entity.key.string_id()
 
-def PollSingleTask(url):
+
+def PollSingleTask(task_id):
   r = random.random()
-  if r < 0.5:
-    return hashlib.sha256(url).hexdigest()
-  elif 0.5 <= r < 0.6:
+  if r < 0.1:
     assert False, 'Oops, an error occurred'
-  else:
-    return None
+
+  data = apis.swarming.task().result(task_id=task_id).execute()
+  print json.dumps(data, sort_keys=True, indent=4)
 
 def PollArchive(archive_key):
   @ndb.transactional
   def get_tasks_to_process():
     ret = []
     for task in models.Task.TasksQuery(parent_key=archive_key):
-      if task.hash is None:
+      if task.output_hash is None:
         # Still work to do
         ret.append(task)
     return ret
@@ -97,23 +98,23 @@ def PollArchive(archive_key):
   @ndb.transactional
   def update_task_with_hash(task_key, new_hash):
     task = task_key.get()
-    if task.hash is None: 
-      task.hash = new_hash
+    if task.output_hash is None:
+      task.output_hash = new_hash
       task.put()
-    elif task.hash != new_hash:
+    elif task.output_hash != new_hash:
       logging.error('Found a conflicting hash for %r, was %r is now %r', task_key, task.hash, new_hash)
-    
+
   all_finished = True
   for task in tasks_to_process:
-    new_hash = PollSingleTask(task.url)
+    new_hash = PollSingleTask(task.task_id)
     if not new_hash:
       all_finished = False
       continue
     update_task_with_hash(task.key, new_hash)
-  
+
   if not all_finished:
     assert False, 'Need to defer the task into the future to try again.'
-    
+
   @ndb.transactional
   def _():
     archive_entity = archive_key.get()
