@@ -1,0 +1,11 @@
+runtime: python27
+api_version: 1
+threadsafe: true
+version: head
+
+builtins:
+  - deferred: on
+
+handlers:
+- url: /
+  script: main.Application
